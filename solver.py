@@ -4,13 +4,9 @@ import torch.optim as optim
 
 import os
 import numpy as np
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score
 
 import sampler
-
-
-
-
 
 class Solver:
     def __init__(self, args, test_dataloader):
@@ -63,8 +59,9 @@ class Solver:
                 labels = labels.cuda()
 
             # task_model step
+            # task_loss = task_model.step()
             preds = task_model(labeled_imgs)
-            task_loss = self.ce_loss(preds, labels)
+            task_loss = self.bce_loss(preds, labels)
             optim_task_model.zero_grad()
             task_loss.backward()
             optim_task_model.step()
@@ -139,14 +136,19 @@ class Solver:
 
                 
 
-            if iter_count % 1 == 0:
+            if iter_count % 100 == 0:
                 print('Current training iteration: {}'.format(iter_count))
                 print('Current task model loss: {:.4f}'.format(task_loss.item()))
                 print('Current vae model loss: {:.4f}'.format(total_vae_loss.item()))
                 print('Current discriminator model loss: {:.4f}'.format(dsc_loss.item()))
 
-        final_accuracy = self.test(task_model)
-        return final_accuracy, vae, discriminator
+
+        # final_accuracy, final_f1 = task_model.test()
+        final_accuracy, final_f1 = self.test(task_model)
+        # print("===========================")
+        # print('Current task model accuracy: {:.4f}'.format(final_accuracy))
+        # print('Current task model f1 micro: {:.4f}'.format(final_f1))
+        return final_accuracy, final_f1, vae, discriminator
 
 
     def sample_for_labeling(self, vae, discriminator, unlabeled_dataloader):
@@ -158,20 +160,25 @@ class Solver:
         return querry_indices
                 
 
-    def test(self, task_model):
+    def test(self, task_model, thre=0.25):
         task_model.eval()
         total, correct = 0, 0
-        for imgs, labels in self.test_dataloader:
+        for imgs, labels, _ in self.test_dataloader:
             if self.args.cuda:
                 imgs = imgs.cuda()
 
             with torch.no_grad():
                 preds = task_model(imgs)
 
-            preds = torch.argmax(preds, dim=1).cpu().numpy()
+            # preds = torch.argmax(preds, dim=1).cpu().numpy()
+            print(preds)
+            preds = preds > thre
+            preds = preds.cpu().numpy()
             correct += accuracy_score(labels, preds, normalize=False)
             total += imgs.size(0)
-        return correct / total * 100
+        acc = correct / total * 100
+        f1 = f1_score(labels, preds, average='micro') * 100
+        return acc, f1
 
 
     def vae_loss(self, x, recon, mu, logvar, beta):

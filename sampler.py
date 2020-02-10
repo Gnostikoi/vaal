@@ -34,3 +34,13 @@ class AdversarySampler:
 
         return querry_pool_indices
         
+# class AggregationSampler(Sampler):
+#     def __init__(self, sampler, data_source, n_asp):
+#         self.data_source = data_source
+        
+
+#     def __iter__(self):
+#         pass
+
+#     def __len__(self):
+#         return len(self.data_source)

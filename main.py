@@ -11,6 +11,7 @@ import os
 from custom_datasets import *
 import model
 import vgg
+import linear
 from solver import Solver
 from utils import *
 import arguments
@@ -57,6 +58,19 @@ def main(args):
         args.budget = 64060
         args.initial_budget = 128120
         args.num_classes = 1000
+    elif args.dataset == 'semeval':
+        train_dataset = SemEvalRes('train')
+        test_dataloader = data.DataLoader(
+            SemEvalRes('test', mlb=train_dataset.mlb), batch_size = args.batch_size, drop_last = False)
+
+        N_samples = len(train_dataset)
+        # print(N_samples)
+        args.num_images = N_samples
+        args.budget = int(0.05 * N_samples)
+        args.initial_budget = int(0.1 * N_samples)
+        args.num_classes = train_dataset.n_classes
+
+        emb_size = train_dataset.emb_size
     else:
         raise NotImplementedError
 
@@ -71,17 +85,22 @@ def main(args):
     args.cuda = args.cuda and torch.cuda.is_available()
     solver = Solver(args, test_dataloader)
 
-    splits = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+    # splits = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+    splits = []
+    split = len(querry_dataloader) / N_samples
 
     current_indices = list(initial_indices)
 
     accuracies = []
+    f1s = []
     
-    for split in splits:
+    while split < N_samples:
+        splits.append(split)
         # need to retrain all the models on the new images
         # re initialize and retrain the models
-        task_model = vgg.vgg16_bn(num_classes=args.num_classes)
-        vae = model.VAE(args.latent_dim)
+        # task_model = vgg.vgg16_bn(num_classes=args.num_classes)
+        task_model = linear.LinearModel(emb_size, args.num_classes)
+        vae = model.VAE(args.latent_dim, emb_size)
         discriminator = model.Discriminator(args.latent_dim)
 
         unlabeled_indices = np.setdiff1d(list(all_indices), current_indices)
@@ -90,7 +109,7 @@ def main(args):
                 sampler=unlabeled_sampler, batch_size=args.batch_size, drop_last=False)
 
         # train the models on the current data
-        acc, vae, discriminator = solver.train(querry_dataloader,
+        acc, f1, vae, discriminator = solver.train(querry_dataloader,
                                                task_model, 
                                                vae, 
                                                discriminator,
@@ -98,7 +117,9 @@ def main(args):
 
 
         print('Final accuracy with {}% of data is: {:.2f}'.format(int(split*100), acc))
+        print('Final f1 micro with {}% of data is: {:.2f}'.format(int(split*100), f1))
         accuracies.append(acc)
+        f1s.append(f1)
 
         sampled_indices = solver.sample_for_labeling(vae, discriminator, unlabeled_dataloader)
         current_indices = list(current_indices) + list(sampled_indices)
@@ -106,7 +127,13 @@ def main(args):
         querry_dataloader = data.DataLoader(train_dataset, sampler=sampler, 
                 batch_size=args.batch_size, drop_last=True)
 
-    torch.save(accuracies, os.path.join(args.out_path, args.log_name))
+    perf = {
+        'labeled_percentage': splits,
+        'accuracies': accuracies,
+        'f1': f1s
+    }
+    torch.save(perf, os.path.join(args.out_path, args.log_name))
+    # torch.save(accuracies, os.path.join(args.out_path, args.log_name))
 
 if __name__ == '__main__':
     args = arguments.get_args()

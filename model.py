@@ -15,43 +15,58 @@ class View(nn.Module):
 
 class VAE(nn.Module):
     """Encoder-Decoder architecture for both WAE-MMD and WAE-GAN."""
-    def __init__(self, z_dim=32, nc=3):
+    def __init__(self, z_dim=32, D_in=512, n_classes=12):
         super(VAE, self).__init__()
         self.z_dim = z_dim
-        self.nc = nc
+        # self.nc = nc
+        # self.encoder = nn.Sequential(
+        #     nn.Conv2d(nc, 128, 4, 2, 1, bias=False),              # B,  128, 32, 32
+        #     nn.BatchNorm2d(128),
+        #     nn.ReLU(True),
+        #     nn.Conv2d(128, 256, 4, 2, 1, bias=False),             # B,  256, 16, 16
+        #     nn.BatchNorm2d(256),
+        #     nn.ReLU(True),
+        #     nn.Conv2d(256, 512, 4, 2, 1, bias=False),             # B,  512,  8,  8
+        #     nn.BatchNorm2d(512),
+        #     nn.ReLU(True),
+        #     nn.Conv2d(512, 1024, 4, 2, 1, bias=False),            # B, 1024,  4,  4
+        #     nn.BatchNorm2d(1024),
+        #     nn.ReLU(True),
+        #     View((-1, 1024*2*2)),                                 # B, 1024*4*4
+        # )
+        D_out = 1024*2*2
+        H_en = 128
         self.encoder = nn.Sequential(
-            nn.Conv2d(nc, 128, 4, 2, 1, bias=False),              # B,  128, 32, 32
-            nn.BatchNorm2d(128),
-            nn.ReLU(True),
-            nn.Conv2d(128, 256, 4, 2, 1, bias=False),             # B,  256, 16, 16
-            nn.BatchNorm2d(256),
-            nn.ReLU(True),
-            nn.Conv2d(256, 512, 4, 2, 1, bias=False),             # B,  512,  8,  8
-            nn.BatchNorm2d(512),
-            nn.ReLU(True),
-            nn.Conv2d(512, 1024, 4, 2, 1, bias=False),            # B, 1024,  4,  4
-            nn.BatchNorm2d(1024),
-            nn.ReLU(True),
-            View((-1, 1024*2*2)),                                 # B, 1024*4*4
-        )
+                nn.Linear(D_in, H_en),
+                nn.ReLU(True),
+                nn.Linear(H_en, D_out),
+                nn.ReLU(True)
+            )
 
-        self.fc_mu = nn.Linear(1024*2*2, z_dim)                            # B, z_dim
-        self.fc_logvar = nn.Linear(1024*2*2, z_dim)                            # B, z_dim
+        self.fc_mu = nn.Linear(D_out, z_dim)                            # B, z_dim
+        self.fc_logvar = nn.Linear(D_out, z_dim)                            # B, z_dim
+
         self.decoder = nn.Sequential(
-            nn.Linear(z_dim, 1024*4*4),                           # B, 1024*8*8
-            View((-1, 1024, 4, 4)),                               # B, 1024,  8,  8
-            nn.ConvTranspose2d(1024, 512, 4, 2, 1, bias=False),   # B,  512, 16, 16
-            nn.BatchNorm2d(512),
+            nn.Linear(z_dim, D_out),
             nn.ReLU(True),
-            nn.ConvTranspose2d(512, 256, 4, 2, 1, bias=False),    # B,  256, 32, 32
-            nn.BatchNorm2d(256),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(256, 128, 4, 2, 1, bias=False),    # B,  128, 64, 64
-            nn.BatchNorm2d(128),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(128, nc, 1),                       # B,   nc, 64, 64
-        )
-        self.weight_init()
+            nn.Linear(D_out, D_in),
+            nn.ReLU(True)
+            )
+        # self.decoder = nn.Sequential(
+        #     nn.Linear(z_dim, 1024*4*4),                           # B, 1024*8*8
+        #     View((-1, 1024, 4, 4)),                               # B, 1024,  8,  8
+        #     nn.ConvTranspose2d(1024, 512, 4, 2, 1, bias=False),   # B,  512, 16, 16
+        #     nn.BatchNorm2d(512),
+        #     nn.ReLU(True),
+        #     nn.ConvTranspose2d(512, 256, 4, 2, 1, bias=False),    # B,  256, 32, 32
+        #     nn.BatchNorm2d(256),
+        #     nn.ReLU(True),
+        #     nn.ConvTranspose2d(256, 128, 4, 2, 1, bias=False),    # B,  128, 64, 64
+        #     nn.BatchNorm2d(128),
+        #     nn.ReLU(True),
+        #     nn.ConvTranspose2d(128, nc, 1),                       # B,   nc, 64, 64
+        # )
+        # self.weight_init()
 
     def weight_init(self):
         for block in self._modules:
